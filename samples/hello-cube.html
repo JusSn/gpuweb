@@ -16,13 +16,13 @@ using namespace metal;
 struct Vertex
 {
     float4 position [[attribute(0)]];
-    float4 color [[attribute(1)]];
+    float2 texCoords [[attribute(1)]];
 };
 
 struct FragmentData
 {
     float4 position [[position]];
-    float4 color;
+    float2 texCoords;
 };
 
 struct Uniform
@@ -30,19 +30,26 @@ struct Uniform
     device float4x4* modelViewProjectionMatrix [[id(0)]];
 };
 
+struct TextureSampler
+{
+    texture2d<float> faceTexture [[id(0)]];
+    sampler faceSampler [[id(1)]];
+};
+
 vertex FragmentData vertex_main(Vertex vertexIn [[stage_in]],
-                          const device Uniform& uniforms [[buffer(0)]])
+                            const device Uniform& uniforms [[buffer(0)]])
 {
     FragmentData output;
     output.position = uniforms.modelViewProjectionMatrix[0] * vertexIn.position;
-    output.color = vertexIn.color;
+    output.texCoords = vertexIn.texCoords;
 
     return output;
 }
 
-fragment float4 fragment_main(FragmentData data [[stage_in]])
+fragment float4 fragment_main(FragmentData data [[stage_in]],
+                            const device TextureSampler args [[buffer(0)]])
 {
-    return float4(data.color);
+    return args.faceTexture.sample(args.faceSampler, data.texCoords);
 }
 `
 
@@ -57,6 +64,7 @@ const colorOffset = 4 * 4;
 function createVerticesArrayBuffer() {
     return new Float32Array([
         // float4 position, float4 color
+        // TODO: Change to float2 texCoords
         1, -1, 1, 1, 1, 0, 1, 1,
         -1, -1, 1, 1, 0, 0, 1, 1,
         -1, -1, -1, 1, 0, 0, 0, 1,
@@ -155,6 +163,67 @@ async function init() {
         inputs: [vertexBufferDescriptor]
     };
 
+    // Texture
+    const image = document.querySelector('img');
+
+    const textureSize = {
+        width: image.width,
+        height: image.height,
+        depth: 1
+    };
+
+    const textureDescriptor = {
+        size: textureSize,
+        arrayLayerCount: 1,
+        mipLevelCount: 1,
+        sampleCount: 1,
+        dimension: "2d",
+        format: "r8g8b8a8unorm",
+        usage: GPUTextureUsage.TRANSFER_DST | GPUTextureUsage.SAMPLED
+    };
+    const texture = device.createTexture(textureDescriptor);
+
+    // Texture data 
+    const canvas2d = document.createElement('canvas');
+    canvas2d.width = image.width;
+    canvas2d.height = image.height;
+    const context2d = canvas2d.getContext('2d');
+    context2d.drawImage(image, 0, 0);
+
+    const imageData = context2d.getImageData(0, 0, image.width, image.height);
+
+    const textureDataBufferDescriptor = {
+        size: imageData.data.length,
+        usage: GPUBufferUsage.TRANSFER_SRC | GPUBufferUsage.TRANSFER_DST
+    };
+    const textureDataBuffer = device.createBuffer(textureDataBufferDescriptor);
+    textureDataBuffer.setSubData(0, imageData.data.buffer);
+
+    const dataCopyView = {
+        buffer: textureDataBuffer,
+        offset: 0,
+        rowPitch: 0,
+        imageHeight: 0
+    };
+    const textureCopyView = {
+        texture: texture,
+        mipLevel: 0,
+        arrayLayer: 0,
+        origin: { x: 0, y: 0, z: 0 }
+    };
+
+    const blitCommandBuffer = device.createCommandBuffer();
+    blitCommandBuffer.copyBufferToTexture(dataCopyView, textureCopyView, textureSize);
+
+    queue = device.getQueue();
+
+    queue.submit([blitCommandBuffer]);
+
+    // Sampler
+    // TODO: Create sampler and add to bind group
+
+    // TODO: Add texture to bind group
+
     // Bind group binding layout
 
     const transformBufferBindGroupLayoutBinding = {
@@ -168,12 +237,12 @@ async function init() {
     };
     uniformsBindGroupLayout = device.createBindGroupLayout(uniformsBindGroupLayoutDescriptor);
 
+    // Pipeline
     const depthStateDescriptor = {
         depthWriteEnabled: true,
         depthCompare: "less"
     };
 
-    // Pipeline
     const pipelineLayoutDescriptor = { bindGroupLayouts: [uniformsBindGroupLayout] };
     const pipelineLayout = device.createPipelineLayout(pipelineLayoutDescriptor);
     const vertexStageDescriptor = {
@@ -236,8 +305,6 @@ async function init() {
         colorAttachments: [colorAttachment],
         depthStencilAttachment: depthAttachment
     };
-
-    queue = device.getQueue();
 
     render();
 }
