@@ -30,10 +30,9 @@ struct Uniform
     device float4x4* modelViewProjectionMatrix [[id(0)]];
 };
 
-struct TextureSampler
+struct SampledTexture
 {
-    texture2d<float> faceTexture [[id(0)]];
-    sampler faceSampler [[id(1)]];
+    texture2d<float> faceTexture [[id(1)]];
 };
 
 vertex FragmentData vertex_main(Vertex vertexIn [[stage_in]],
@@ -47,15 +46,16 @@ vertex FragmentData vertex_main(Vertex vertexIn [[stage_in]],
 }
 
 fragment float4 fragment_main(FragmentData data [[stage_in]],
-                            const device TextureSampler args [[buffer(0)]])
+                            const device SampledTexture args [[buffer(0)]])
 {
-    return args.faceTexture.sample(args.faceSampler, data.texCoords);
+    constexpr sampler faceSampler(coord::normalized, address::clamp, filter::linear);
+    return args.faceTexture.sample(faceSampler, data.texCoords);
 }
 `
 
 // A * indicates that this symbol has yet to be implemented in WebKit.
 
-let device, context, verticesBuffer, uniformsBindGroupLayout, pipeline, renderPassDescriptor, queue;
+let device, context, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue;
 let projectionMatrix = mat4.create();
 
 const vertexSize = 4 * 8;
@@ -232,10 +232,21 @@ async function init() {
         type: "uniformBuffer"
     };
 
-    const uniformsBindGroupLayoutDescriptor = { 
-        bindings: [transformBufferBindGroupLayoutBinding] 
+    const textureBindGroupLayoutBinding = {
+        binding: 1,
+        visibility: WebGPUShaderStageBit.FRAGMENT,
+        type: "sampledTexture"
     };
-    uniformsBindGroupLayout = device.createBindGroupLayout(uniformsBindGroupLayoutDescriptor);
+
+    const bindGroupLayoutDescriptor = { 
+        bindings: [transformBufferBindGroupLayoutBinding, textureBindGroupLayoutBinding] 
+    };
+    bindGroupLayout = device.createBindGroupLayout(bindGroupLayoutDescriptor);
+
+    const textureViewBinding = {
+        binding: 1,
+        resource: texture.createDefaultTextureView()
+    };
 
     // Pipeline
     const depthStateDescriptor = {
@@ -243,7 +254,7 @@ async function init() {
         depthCompare: "less"
     };
 
-    const pipelineLayoutDescriptor = { bindGroupLayouts: [uniformsBindGroupLayout] };
+    const pipelineLayoutDescriptor = { bindGroupLayouts: [bindGroupLayout] };
     const pipelineLayout = device.createPipelineLayout(pipelineLayoutDescriptor);
     const vertexStageDescriptor = {
         module: shaderModule,
@@ -306,7 +317,7 @@ async function init() {
         depthStencilAttachment: depthAttachment
     };
 
-    render();
+    render(textureViewBinding);
 }
 
 /* Transform Buffers and Bindings */
@@ -328,7 +339,7 @@ const transformBufferDescriptor = {
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.MAP_WRITE
 };
 
-function createTransformBindGroupDescriptor(transformBuffer) {
+function createBindGroupDescriptor(transformBuffer, textureViewBinding) {
     const transformBufferBinding = {
         buffer: transformBuffer,
         offset: 0,
@@ -339,18 +350,18 @@ function createTransformBindGroupDescriptor(transformBuffer) {
         resource: transformBufferBinding
     };
     return {
-        layout: uniformsBindGroupLayout,
-        bindings: [transformBufferBindGroupBinding]
+        layout: bindGroupLayout,
+        bindings: [transformBufferBindGroupBinding, textureViewBinding]
     };
 }
 
 let mappedGroups = [];
 
-function render() {
+function render(textureViewBinding) {
     if (mappedGroups.length == 0) {
         const buffer = device.createBuffer(transformBufferDescriptor);
         buffer.mapWriteAsync().then(arrayBuffer => {
-            const group = device.createBindGroup(createTransformBindGroupDescriptor(buffer));
+            const group = device.createBindGroup(createBindGroupDescriptor(buffer, textureViewBinding));
 
             let mappedGroup = { buffer: buffer, arrayBuffer: arrayBuffer, bindGroup: group };
             drawCommands(mappedGroup);
