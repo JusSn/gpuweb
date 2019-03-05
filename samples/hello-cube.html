@@ -7,6 +7,7 @@
 </head>
 <body>
 <canvas height=1000 width=1000></canvas>
+<img src="green-400.png"></img>
 <script>
 const shader = `
 #include <metal_stdlib>
@@ -46,16 +47,16 @@ vertex FragmentData vertex_main(Vertex vertexIn [[stage_in]],
 }
 
 fragment float4 fragment_main(FragmentData data [[stage_in]],
-                            const device SampledTexture args [[buffer(0)]])
+                            const device SampledTexture& args [[buffer(0)]])
 {
-    constexpr sampler faceSampler(coord::normalized, address::clamp, filter::linear);
+    constexpr sampler faceSampler(coord::normalized, address::clamp_to_edge, filter::linear);
     return args.faceTexture.sample(faceSampler, data.texCoords);
 }
 `
 
 // A * indicates that this symbol has yet to be implemented in WebKit.
 
-let device, context, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue;
+let device, context, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue, textureViewBinding;
 let projectionMatrix = mat4.create();
 
 const vertexSize = 4 * 8;
@@ -109,7 +110,12 @@ function createVerticesArrayBuffer() {
     ]).buffer;
 }
 
-async function init() {
+function loadImage() {
+    const image = document.querySelector('img');
+    image.onload = () => init(image);
+}
+
+async function init(image) {
     const adapter = await webgpu.requestAdapter();
     device = adapter.createDevice();
 
@@ -164,8 +170,6 @@ async function init() {
     };
 
     // Texture
-    const image = document.querySelector('img');
-
     const textureSize = {
         width: image.width,
         height: image.height,
@@ -178,7 +182,7 @@ async function init() {
         mipLevelCount: 1,
         sampleCount: 1,
         dimension: "2d",
-        format: "r8g8b8a8unorm",
+        format: "r8g8b8a8-unorm",
         usage: GPUTextureUsage.TRANSFER_DST | GPUTextureUsage.SAMPLED
     };
     const texture = device.createTexture(textureDescriptor);
@@ -222,20 +226,17 @@ async function init() {
     // Sampler
     // TODO: Create sampler and add to bind group
 
-    // TODO: Add texture to bind group
-
     // Bind group binding layout
-
     const transformBufferBindGroupLayoutBinding = {
         binding: 0, // id[[(0)]]
-        visibility: WebGPUShaderStageBit.VERTEX,
-        type: "uniformBuffer"
+        visibility: GPUShaderStageBit.VERTEX,
+        type: "uniform-buffer"
     };
 
     const textureBindGroupLayoutBinding = {
         binding: 1,
-        visibility: WebGPUShaderStageBit.FRAGMENT,
-        type: "sampledTexture"
+        visibility: GPUShaderStageBit.FRAGMENT,
+        type: "sampled-texture"
     };
 
     const bindGroupLayoutDescriptor = { 
@@ -243,7 +244,7 @@ async function init() {
     };
     bindGroupLayout = device.createBindGroupLayout(bindGroupLayoutDescriptor);
 
-    const textureViewBinding = {
+    textureViewBinding = {
         binding: 1,
         resource: texture.createDefaultTextureView()
     };
@@ -317,7 +318,7 @@ async function init() {
         depthStencilAttachment: depthAttachment
     };
 
-    render(textureViewBinding);
+    render();
 }
 
 /* Transform Buffers and Bindings */
@@ -357,7 +358,7 @@ function createBindGroupDescriptor(transformBuffer, textureViewBinding) {
 
 let mappedGroups = [];
 
-function render(textureViewBinding) {
+function render() {
     if (mappedGroups.length == 0) {
         const buffer = device.createBuffer(transformBufferDescriptor);
         buffer.mapWriteAsync().then(arrayBuffer => {
@@ -398,7 +399,7 @@ function drawCommands(mappedGroup) {
     requestAnimationFrame(render);
 }
 
-init();
+loadImage();
 </script>
 </body>
 </html>
