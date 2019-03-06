@@ -7,7 +7,6 @@
 </head>
 <body>
 <canvas height=1000 width=1000></canvas>
-<img src="green-400.png"></img>
 <script>
 const shader = `
 #include <metal_stdlib>
@@ -49,7 +48,7 @@ vertex FragmentData vertex_main(Vertex vertexIn [[stage_in]],
 fragment float4 fragment_main(FragmentData data [[stage_in]],
                             const device SampledTexture& args [[buffer(0)]])
 {
-    constexpr sampler faceSampler(coord::normalized, address::clamp_to_edge, filter::linear);
+    constexpr sampler faceSampler(coord::normalized, address::clamp_to_zero, filter::linear);
     return args.faceTexture.sample(faceSampler, data.texCoords);
 }
 `
@@ -59,63 +58,56 @@ fragment float4 fragment_main(FragmentData data [[stage_in]],
 let device, context, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue, textureViewBinding;
 let projectionMatrix = mat4.create();
 
-const vertexSize = 4 * 8;
-const verticesSize = vertexSize * 36;
-const colorOffset = 4 * 4;
-function createVerticesArrayBuffer() {
+const texCoordsOffset = 4 * 4;
+const vertexSize = 4 * 6;
+function createVerticesArray() {
     return new Float32Array([
-        // float4 position, float4 color
-        // TODO: Change to float2 texCoords
-        1, -1, 1, 1, 1, 0, 1, 1,
-        -1, -1, 1, 1, 0, 0, 1, 1,
-        -1, -1, -1, 1, 0, 0, 0, 1,
-        1, -1, -1, 1, 1, 0, 0, 1,
-        1, -1, 1, 1, 1, 0, 1, 1,
-        -1, -1, -1, 1, 0, 0, 0, 1,
+        // float4 position, float2 texCoords
+        1, -1, 1, 1, 1, 0, 
+        -1, -1, 1, 1, 0, 0, 
+        -1, -1, -1, 1, 0, 1, 
+        1, -1, -1, 1, 1, 1,
+        1, -1, 1, 1, 1, 0,
+        -1, -1, -1, 1, 0, 1,
 
-        1, 1, 1, 1, 1, 1, 1, 1,
-        1, -1, 1, 1, 1, 0, 1, 1,
-        1, -1, -1, 1, 1, 0, 0, 1,
-        1, 1, -1, 1, 1, 1, 0, 1,
-        1, 1, 1, 1, 1, 1, 1, 1,
-        1, -1, -1, 1, 1, 0, 0, 1,
+        1, 1, 1, 1, 0, 0,
+        1, -1, 1, 1, 0, 1,
+        1, -1, -1, 1, 1, 1,
+        1, 1, -1, 1, 1, 0,
+        1, 1, 1, 1, 0, 0,
+        1, -1, -1, 1, 1, 1,
 
-        -1, 1, 1, 1, 0, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, -1, 1, 1, 1, 0, 1,
-        -1, 1, -1, 1, 0, 1, 0, 1,
-        -1, 1, 1, 1, 0, 1, 1, 1,
-        1, 1, -1, 1, 1, 1, 0, 1,
+        -1, 1, 1, 1, 0, 1,
+        1, 1, 1, 1, 1, 1,
+        1, 1, -1, 1, 1, 0,
+        -1, 1, -1, 1, 0, 0,
+        -1, 1, 1, 1, 0, 1,
+        1, 1, -1, 1, 1, 0,
 
-        -1, -1, 1, 1, 0, 0, 1, 1,
-        -1, 1, 1, 1, 0, 1, 1, 1,
-        -1, 1, -1, 1, 0, 1, 0, 1,
-        -1, -1, -1, 1, 0, 0, 0, 1,
-        -1, -1, 1, 1, 0, 0, 1, 1,
-        -1, 1, -1, 1, 0, 1, 0, 1,
+        -1, -1, 1, 1, 1, 1,
+        -1, 1, 1, 1, 1, 0,
+        -1, 1, -1, 1, 0, 0,
+        -1, -1, -1, 1, 0, 1,
+        -1, -1, 1, 1, 1, 1,
+        -1, 1, -1, 1, 0, 0,
 
-        1, 1, 1, 1, 1, 1, 1, 1,
-        -1, 1, 1, 1, 0, 1, 1, 1,
-        -1, -1, 1, 1, 0, 0, 1, 1,
-        -1, -1, 1, 1, 0, 0, 1, 1,
-        1, -1, 1, 1, 1, 0, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 0,
+        -1, 1, 1, 1, 0, 0,
+        -1, -1, 1, 1, 0, 1,
+        -1, -1, 1, 1, 0, 1,
+        1, -1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 0,
 
-        1, -1, -1, 1, 1, 0, 0, 1,
-        -1, -1, -1, 1, 0, 0, 0, 1,
-        -1, 1, -1, 1, 0, 1, 0, 1,
-        1, 1, -1, 1, 1, 1, 0, 1,
-        1, -1, -1, 1, 1, 0, 0, 1,
-        -1, 1, -1, 1, 0, 1, 0, 1,
-    ]).buffer;
+        1, -1, -1, 1, 0, 1,
+        -1, -1, -1, 1, 1, 1,
+        -1, 1, -1, 1, 1, 0,
+        1, 1, -1, 1, 0, 0,
+        1, -1, -1, 1, 0, 1,
+        -1, 1, -1, 1, 1, 0,
+    ]);
 }
 
-function loadImage() {
-    const image = document.querySelector('img');
-    image.onload = () => init(image);
-}
-
-async function init(image) {
+async function init() {
     const adapter = await webgpu.requestAdapter();
     device = adapter.createDevice();
 
@@ -138,12 +130,13 @@ async function init(image) {
     const shaderModuleDescriptor = { code: shader };
     const shaderModule = device.createShaderModule(shaderModuleDescriptor);
 
+    const verticesArray = createVerticesArray();
     const verticesBufferDescriptor = { 
-        size: verticesSize, 
+        size: verticesArray.byteLength, 
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.TRANSFER_DST
     };
     verticesBuffer = device.createBuffer(verticesBufferDescriptor);
-    verticesBuffer.setSubData(0, createVerticesArrayBuffer());
+    verticesBuffer.setSubData(0, verticesArray.buffer);
 
     // Input state. Model will change soon to adopt one of https://github.com/kainino0x/gpuweb/pull/2/'s ideas.
     const positionAttributeDescriptor = {
@@ -152,11 +145,11 @@ async function init(image) {
         offset: 0,
         format: WebGPUVertexFormat.FLOAT_R32_G32_B32_A32
     };
-    const colorAttributeDescriptor = {
+    const texCoordsAttributeDescriptor = {
         shaderLocation: 1,
         inputSlot: 0,
-        offset: colorOffset,
-        format: WebGPUVertexFormat.FLOAT_R32_G32_B32_A32
+        offset: texCoordsOffset,
+        format: WebGPUVertexFormat.FLOAT_R32_G32
     }
     const vertexBufferDescriptor = {
         inputSlot: 0,
@@ -165,11 +158,20 @@ async function init(image) {
     };
     const inputStateDescriptor = {
         indexFormat: WebGPUIndexFormat.UINT32,
-        attributes: [positionAttributeDescriptor, colorAttributeDescriptor], 
+        attributes: [positionAttributeDescriptor, texCoordsAttributeDescriptor], 
         inputs: [vertexBufferDescriptor]
     };
 
     // Texture
+
+    // Load texture image
+    const image = new Image();
+    const imageLoadPromise = new Promise(resolve => { 
+        image.onload = () => resolve(); 
+        image.src = "safari-alpha.png"
+    });
+    await Promise.resolve(imageLoadPromise);
+
     const textureSize = {
         width: image.width,
         height: image.height,
@@ -196,6 +198,13 @@ async function init(image) {
 
     const imageData = context2d.getImageData(0, 0, image.width, image.height);
 
+    const canvas3 = document.createElement('canvas');
+    canvas3.width = image.width;
+    canvas3.height = image.height;
+    const context3 = canvas3.getContext('2d');
+    document.body.append(canvas3);
+    context3.putImageData(imageData, 0, 0);
+
     const textureDataBufferDescriptor = {
         size: imageData.data.length,
         usage: GPUBufferUsage.TRANSFER_SRC | GPUBufferUsage.TRANSFER_DST
@@ -206,7 +215,7 @@ async function init(image) {
     const dataCopyView = {
         buffer: textureDataBuffer,
         offset: 0,
-        rowPitch: 0,
+        rowPitch: image.width * 4,
         imageHeight: 0
     };
     const textureCopyView = {
@@ -399,7 +408,7 @@ function drawCommands(mappedGroup) {
     requestAnimationFrame(render);
 }
 
-loadImage();
+init();
 </script>
 </body>
 </html>
