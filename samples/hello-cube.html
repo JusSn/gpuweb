@@ -198,13 +198,6 @@ async function init() {
 
     const imageData = context2d.getImageData(0, 0, image.width, image.height);
 
-    const canvas3 = document.createElement('canvas');
-    canvas3.width = image.width;
-    canvas3.height = image.height;
-    const context3 = canvas3.getContext('2d');
-    document.body.append(canvas3);
-    context3.putImageData(imageData, 0, 0);
-
     const textureDataBufferDescriptor = {
         size: imageData.data.length,
         usage: GPUBufferUsage.TRANSFER_SRC | GPUBufferUsage.TRANSFER_DST
