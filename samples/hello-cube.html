@@ -8,6 +8,15 @@
 <body>
 <canvas height=1000 width=1000></canvas>
 <script>
+const positionAttributeNum  = 0;
+const texCoordsAttributeNum = 1;
+
+const transformBindingNum   = 0;
+const textureBindingNum     = 1;
+const samplerBindingNum     = 2;
+
+const bindGroupIndex        = 0;
+
 const shader = `
 #include <metal_stdlib>
 
@@ -15,8 +24,8 @@ using namespace metal;
 
 struct Vertex
 {
-    float4 position [[attribute(0)]];
-    float2 texCoords [[attribute(1)]];
+    float4 position [[attribute(${positionAttributeNum})]];
+    float2 texCoords [[attribute(${texCoordsAttributeNum})]];
 };
 
 struct FragmentData
@@ -27,16 +36,17 @@ struct FragmentData
 
 struct Uniform
 {
-    device float4x4* modelViewProjectionMatrix [[id(0)]];
+    device float4x4* modelViewProjectionMatrix [[id(${transformBindingNum})]];
 };
 
 struct SampledTexture
 {
-    texture2d<float> faceTexture [[id(1)]];
+    texture2d<float> faceTexture [[id(${textureBindingNum})]];
+    sampler faceSampler [[id(${samplerBindingNum})]];
 };
 
 vertex FragmentData vertex_main(Vertex vertexIn [[stage_in]],
-                            const device Uniform& uniforms [[buffer(0)]])
+                            const device Uniform& uniforms [[buffer(${bindGroupIndex})]])
 {
     FragmentData output;
     output.position = uniforms.modelViewProjectionMatrix[0] * vertexIn.position;
@@ -46,16 +56,15 @@ vertex FragmentData vertex_main(Vertex vertexIn [[stage_in]],
 }
 
 fragment float4 fragment_main(FragmentData data [[stage_in]],
-                            const device SampledTexture& args [[buffer(0)]])
+                            const device SampledTexture& args [[buffer(${bindGroupIndex})]])
 {
-    constexpr sampler faceSampler(coord::normalized, address::clamp_to_zero, filter::linear);
-    return args.faceTexture.sample(faceSampler, data.texCoords);
+    return args.faceTexture.sample(args.faceSampler, data.texCoords);
 }
 `
 
 // A * indicates that this symbol has yet to be implemented in WebKit.
 
-let device, context, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue, textureViewBinding;
+let device, context, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue, textureViewBinding, samplerBinding;
 let projectionMatrix = mat4.create();
 
 const texCoordsOffset = 4 * 4;
@@ -140,13 +149,13 @@ async function init() {
 
     // Input state. Model will change soon to adopt one of https://github.com/kainino0x/gpuweb/pull/2/'s ideas.
     const positionAttributeDescriptor = {
-        shaderLocation: 0,  // [[attribute(0)]].
+        shaderLocation: positionAttributeNum,  // [[attribute(0)]].
         inputSlot: 0,       // Used as vertex buffer index in Metal.
         offset: 0,
         format: WebGPUVertexFormat.FLOAT_R32_G32_B32_A32
     };
     const texCoordsAttributeDescriptor = {
-        shaderLocation: 1,
+        shaderLocation: texCoordsAttributeNum,
         inputSlot: 0,
         offset: texCoordsOffset,
         format: WebGPUVertexFormat.FLOAT_R32_G32
@@ -225,31 +234,37 @@ async function init() {
 
     queue.submit([blitCommandBuffer]);
 
-    // Sampler
-    // TODO: Create sampler and add to bind group
-
     // Bind group binding layout
     const transformBufferBindGroupLayoutBinding = {
-        binding: 0, // id[[(0)]]
+        binding: transformBindingNum, // id[[(0)]]
         visibility: GPUShaderStageBit.VERTEX,
         type: "uniform-buffer"
     };
 
     const textureBindGroupLayoutBinding = {
-        binding: 1,
+        binding: textureBindingNum,
         visibility: GPUShaderStageBit.FRAGMENT,
         type: "sampled-texture"
     };
-
-    const bindGroupLayoutDescriptor = { 
-        bindings: [transformBufferBindGroupLayoutBinding, textureBindGroupLayoutBinding] 
-    };
-    bindGroupLayout = device.createBindGroupLayout(bindGroupLayoutDescriptor);
-
     textureViewBinding = {
-        binding: 1,
+        binding: textureBindingNum,
         resource: texture.createDefaultTextureView()
     };
+
+    const samplerBindGroupLayoutBinding = {
+        binding: samplerBindingNum,
+        visibility: GPUShaderStageBit.FRAGMENT,
+        type: "sampler"
+    };
+    samplerBinding = {
+        binding: samplerBindingNum,
+        resource: device.createSampler({})
+    };
+
+    const bindGroupLayoutDescriptor = { 
+        bindings: [transformBufferBindGroupLayoutBinding, textureBindGroupLayoutBinding, samplerBindGroupLayoutBinding] 
+    };
+    bindGroupLayout = device.createBindGroupLayout(bindGroupLayoutDescriptor);
 
     // Pipeline
     const depthStateDescriptor = {
@@ -342,19 +357,19 @@ const transformBufferDescriptor = {
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.MAP_WRITE
 };
 
-function createBindGroupDescriptor(transformBuffer, textureViewBinding) {
+function createBindGroupDescriptor(transformBuffer, textureViewBinding, samplerBinding) {
     const transformBufferBinding = {
         buffer: transformBuffer,
         offset: 0,
         size: transformSize
     };
     const transformBufferBindGroupBinding = {
-        binding: 0,
+        binding: transformBindingNum,
         resource: transformBufferBinding
     };
     return {
         layout: bindGroupLayout,
-        bindings: [transformBufferBindGroupBinding, textureViewBinding]
+        bindings: [transformBufferBindGroupBinding, textureViewBinding, samplerBinding]
     };
 }
 
@@ -364,7 +379,7 @@ function render() {
     if (mappedGroups.length == 0) {
         const buffer = device.createBuffer(transformBufferDescriptor);
         buffer.mapWriteAsync().then(arrayBuffer => {
-            const group = device.createBindGroup(createBindGroupDescriptor(buffer, textureViewBinding));
+            const group = device.createBindGroup(createBindGroupDescriptor(buffer, textureViewBinding, samplerBinding));
 
             let mappedGroup = { buffer: buffer, arrayBuffer: arrayBuffer, bindGroup: group };
             drawCommands(mappedGroup);
@@ -385,7 +400,7 @@ function drawCommands(mappedGroup) {
     // Vertex attributes
     passEncoder.setVertexBuffers(0, [verticesBuffer], [0]);
     // Bind groups
-    passEncoder.setBindGroup(0, mappedGroup.bindGroup);
+    passEncoder.setBindGroup(bindGroupIndex, mappedGroup.bindGroup);
     passEncoder.draw(36, 1, 0, 0);
     const endCommandBuffer = passEncoder.endPass();
 
