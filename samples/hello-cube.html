@@ -63,7 +63,7 @@ fragment float4 fragment_main(FragmentData data [[stage_in]],
 }
 `
 
-let device, context, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue, textureViewBinding, samplerBinding;
+let device, swapChain, verticesBuffer, bindGroupLayout, pipeline, renderPassDescriptor, queue, textureViewBinding, samplerBinding;
 let projectionMatrix = mat4.create();
 
 const texCoordsOffset = 4 * 4;
@@ -116,7 +116,7 @@ function createVerticesArray() {
 }
 
 async function init() {
-    const adapter = await webgpu.requestAdapter();
+    const adapter = await gpu.requestAdapter();
     device = adapter.createDevice();
 
     const canvas = document.querySelector('canvas');
@@ -124,15 +124,13 @@ async function init() {
     const aspect = Math.abs(canvas.width / canvas.height);
     mat4.perspective(projectionMatrix, (2 * Math.PI) / 5, aspect, 1, 100.0);
 
-    context = canvas.getContext('webgpu');
+    const context = canvas.getContext('gpu');
 
     const swapChainDescriptor = { 
-        device: device, 
-        format:"b8g8r8a8-unorm", 
-        width: canvas.width, 
-        height: canvas.height 
+        context: context, 
+        format:"b8g8r8a8-unorm"
     };
-    context.configure(swapChainDescriptor);
+    swapChain = device.createSwapChain(swapChainDescriptor);
 
     // WebKit WebGPU accepts only MSL for now.
     const shaderModuleDescriptor = { code: shader };
@@ -321,7 +319,7 @@ async function init() {
 
     const depthTexture = device.createTexture(depthTextureDescriptor);
 
-    //GPURenderPassDepthStencilAttachmentDescriptor
+    // GPURenderPassDepthStencilAttachmentDescriptor
     const depthAttachment = {
         attachment: depthTexture.createDefaultTextureView(),
         depthLoadOp: "clear",
@@ -392,7 +390,7 @@ function drawCommands(mappedGroup) {
     mappedGroup.buffer.unmap();
 
     const commandBuffer = device.createCommandBuffer();
-    renderPassDescriptor.colorAttachments[0].attachment = context.getNextTexture().createDefaultTextureView();
+    renderPassDescriptor.colorAttachments[0].attachment = swapChain.getCurrentTexture().createDefaultTextureView();
     const passEncoder = commandBuffer.beginRenderPass(renderPassDescriptor);
     // Encode drawing commands.
     passEncoder.setPipeline(pipeline);
@@ -404,7 +402,6 @@ function drawCommands(mappedGroup) {
     const endCommandBuffer = passEncoder.endPass();
 
     queue.submit([endCommandBuffer]);
-    context.present();
 
     // Ready the current buffer for update after GPU is done with it.
     mappedGroup.buffer.mapWriteAsync().then((arrayBuffer) => {
