@@ -128,7 +128,7 @@ async function init() {
 
     const swapChainDescriptor = { 
         context: context, 
-        format:"b8g8r8a8-unorm"
+        format: "bgra8unorm"
     };
     swapChain = device.createSwapChain(swapChainDescriptor);
 
@@ -149,21 +149,21 @@ async function init() {
         shaderLocation: positionAttributeNum,  // [[attribute(0)]].
         inputSlot: vertexBufferIndex,       // Used as vertex buffer index in Metal.
         offset: 0,
-        format: WebGPUVertexFormat.FLOAT_R32_G32_B32_A32
+        format: "float4"
     };
     const texCoordsAttributeDescriptor = {
         shaderLocation: texCoordsAttributeNum,
         inputSlot: vertexBufferIndex,
         offset: texCoordsOffset,
-        format: WebGPUVertexFormat.FLOAT_R32_G32
+        format: "float2"
     }
     const vertexBufferDescriptor = {
         inputSlot: vertexBufferIndex,
         stride: vertexSize,
-        stepMode: WebGPUInputStepMode.VERTEX
+        stepMode: "vertex"
     };
     const inputStateDescriptor = {
-        indexFormat: WebGPUIndexFormat.UINT32,
+        indexFormat: "uint32",
         attributes: [positionAttributeDescriptor, texCoordsAttributeDescriptor], 
         inputs: [vertexBufferDescriptor]
     };
@@ -190,7 +190,7 @@ async function init() {
         mipLevelCount: 1,
         sampleCount: 1,
         dimension: "2d",
-        format: "r8g8b8a8-unorm",
+        format: "rgba8unorm",
         usage: GPUTextureUsage.TRANSFER_DST | GPUTextureUsage.SAMPLED
     };
     const texture = device.createTexture(textureDescriptor);
@@ -285,7 +285,8 @@ async function init() {
         vertexStage: vertexStageDescriptor,
         fragmentStage: fragmentStageDescriptor,
 
-        primitiveTopology: "triangleList",
+        primitiveTopology: "triangle-list",
+        colorStates: [{ format: "bgra8unorm" }],
         depthStencilState: depthStateDescriptor,
         inputState: inputStateDescriptor
     };
@@ -313,7 +314,7 @@ async function init() {
         mipLevelCount: 1,
         sampleCount: 1,
         dimension: "2d",
-        format: "d32-float-s8-uint",
+        format: "depth32float-stencil8",
         usage: GPUTextureUsage.OUTPUT_ATTACHMENT
     };
 
