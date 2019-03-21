@@ -117,7 +117,7 @@ function createVerticesArray() {
 
 async function init() {
     const adapter = await gpu.requestAdapter();
-    device = adapter.createDevice();
+    device = await adapter.requestDevice();
 
     const canvas = document.querySelector('canvas');
 
