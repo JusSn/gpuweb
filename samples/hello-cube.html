@@ -224,12 +224,12 @@ async function init() {
         origin: { x: 0, y: 0, z: 0 }
     };
 
-    const blitCommandBuffer = device.createCommandBuffer();
-    blitCommandBuffer.copyBufferToTexture(dataCopyView, textureCopyView, textureSize);
+    const blitCommandEncoder = device.createCommandEncoder();
+    blitCommandEncoder.copyBufferToTexture(dataCopyView, textureCopyView, textureSize);
 
     queue = device.getQueue();
 
-    queue.submit([blitCommandBuffer]);
+    queue.submit([blitCommandEncoder.finish()]);
 
     // Bind group binding layout
     const transformBufferBindGroupLayoutBinding = {
@@ -245,7 +245,7 @@ async function init() {
     };
     textureViewBinding = {
         binding: textureBindingNum,
-        resource: texture.createDefaultTextureView()
+        resource: texture.createDefaultView()
     };
 
     const samplerBindGroupLayoutBinding = {
@@ -322,7 +322,7 @@ async function init() {
 
     // GPURenderPassDepthStencilAttachmentDescriptor
     const depthAttachment = {
-        attachment: depthTexture.createDefaultTextureView(),
+        attachment: depthTexture.createDefaultView(),
         depthLoadOp: "clear",
         depthStoreOp: "store",
         clearDepth: 1.0
@@ -390,9 +390,9 @@ function drawCommands(mappedGroup) {
     updateTransformArray(new Float32Array(mappedGroup.arrayBuffer));
     mappedGroup.buffer.unmap();
 
-    const commandBuffer = device.createCommandBuffer();
-    renderPassDescriptor.colorAttachments[0].attachment = swapChain.getCurrentTexture().createDefaultTextureView();
-    const passEncoder = commandBuffer.beginRenderPass(renderPassDescriptor);
+    const commandEncoder = device.createCommandEncoder();
+    renderPassDescriptor.colorAttachments[0].attachment = swapChain.getCurrentTexture().createDefaultView();
+    const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
     // Encode drawing commands.
     passEncoder.setPipeline(pipeline);
     // Vertex attributes
@@ -400,9 +400,9 @@ function drawCommands(mappedGroup) {
     // Bind groups
     passEncoder.setBindGroup(bindGroupIndex, mappedGroup.bindGroup);
     passEncoder.draw(36, 1, 0, 0);
-    const endCommandBuffer = passEncoder.endPass();
+    passEncoder.endPass();
 
-    queue.submit([endCommandBuffer]);
+    queue.submit([commandEncoder.finish()]);
 
     // Ready the current buffer for update after GPU is done with it.
     mappedGroup.buffer.mapWriteAsync().then((arrayBuffer) => {
