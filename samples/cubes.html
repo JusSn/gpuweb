@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=1000">
+<title>Web GPU Cubes demo</title>
+<script src="gl-matrix-min.js"></script>
+</head>
+<body>
+<canvas height=1000 width=1000></canvas>
+<script>
+const mvpBinding            = 0;
+const normalBinding         = 1;
+const ambientColorBinding   = 2;
+const multiplierBinding     = 3;
+
+const positionAttributeNum  = 0;
+const normalAttributeNum    = 1;
+
+const bindGroupIndex = 0;
+
+const shader = `
+#include <metal_stdlib>
+
+using namespace metal;
+
+struct UniformArgs
+{
+    constant float4x4* mvpMatrix     [[id(${mvpBinding})]];
+    constant float4x4* normalMatrix  [[id(${normalBinding})]];
+    constant float4* ambientColor    [[id(${ambientColorBinding})]];
+    constant float* multiplier       [[id(${multiplierBinding})]];
+};
+
+constant float3 lightPosition = float3(0, -1, 1);
+constant float4 lightColor = float4(1, 1, 1, 1);
+
+struct VertexIn {
+    float3 position [[attribute(${positionAttributeNum})]];
+    float3 normal;  [[attribute(${normalAttributeNum})]];
+};
+
+struct VertexOut {
+    float4 position [[position]];
+    half4 color;
+};
+
+vertex VertexOut vertexFunction(VertexIn vertexArgs                 [[stage_in]], 
+                                constant UniformArgs& uniformArgs   [[buffer(${bindGroupIndex})]])
+{
+    VertexOut out;
+
+    float4 position = float4(vertexArgs.position, 1);
+    out.position = uniformArgs.mvpMatrix[0] * position;
+
+    float3 normal = vertexArgs.normal;
+    float4 eyeNormal = normalize(uniformArgs.normalMatrix[0] * float4(normal, 0));
+
+    float nDotl = dot(eyeNormal.rgb, normalize(lightPosition));
+    nDotl = fmax(0, nDotl);
+
+    out.color = half4(uniformArgs.ambientColor[0] + lightColor * nDotl);
+
+    return out;
+}
+
+fragment half4 fragmentFunction(VertexOut v [[stage_in]])
+{
+    return v.color;
+}
+`;
